@@ -1,0 +1,566 @@
+
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Product } from "@/entities/Product";
+import { Distributor } from "@/entities/Distributor";
+import { User } from "@/entities/User";
+import { Trash2, Plus, Minus, ArrowLeft, MapPin, Loader2, CreditCard, Wallet, DollarSign } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Order } from "@/entities/Order";
+
+export default function CartPage() {
+  const [cart, setCart] = useState([]);
+  const [products, setProducts] = useState({});
+  const [subtotal, setSubtotal] = useState(0);
+  const [user, setUser] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [availableDistributors, setAvailableDistributors] = useState([]);
+  const [selectedDistributor, setSelectedDistributor] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [notes, setNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("pix_online");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState("cart");
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        const cartData = JSON.parse(localStorage.getItem("cart") || "[]");
+        setCart(cartData);
+        
+        try {
+          const userData = await User.me();
+          setUser(userData);
+          setAddresses(userData.addresses || []);
+          if (userData.addresses && userData.addresses.length > 0) {
+            const defaultAddress = userData.addresses.find(addr => addr.is_default) || userData.addresses[0];
+            setSelectedAddress(defaultAddress);
+          }
+        } catch (error) {
+          console.log("User not logged in");
+        }
+        
+        const locationData = localStorage.getItem("userLocation");
+        if (locationData) {
+          setUserLocation(JSON.parse(locationData));
+        }
+        
+        if (cartData.length > 0) {
+          const productIds = cartData.map(item => item.product_id);
+          const productsData = await Product.list();
+          const filtered = productsData.filter(p => productIds.includes(p.id));
+          
+          const productsMap = {};
+          filtered.forEach(p => {
+            productsMap[p.id] = p;
+          });
+          
+          setProducts(productsMap);
+          
+          const distributorIds = [...new Set(cartData.map(item => item.distributor_id))];
+          if (distributorIds.length > 0) {
+            const distributorsData = await Distributor.list();
+            setAvailableDistributors(distributorsData.filter(d => distributorIds.includes(d.id)));
+            
+            if (distributorsData.length > 0) {
+              setSelectedDistributor(distributorsData[0]);
+              setDeliveryFee(distributorsData[0].delivery_fee || 0);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error loading cart data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    let total = 0;
+    cart.forEach(item => {
+      total += item.quantity * item.price;
+    });
+    setSubtotal(total);
+  }, [cart, products]);
+
+  const updateQuantity = (productId, newQuantity) => {
+    if (newQuantity < 1) return;
+    
+    const updatedCart = cart.map(item => {
+      if (item.product_id === productId) {
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    });
+    
+    setCart(updatedCart);
+    localStorage.setItem("cart", JSON.stringify(updatedCart));
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const removeItem = (productId) => {
+    const updatedCart = cart.filter(item => item.product_id !== productId);
+    setCart(updatedCart);
+    localStorage.setItem("cart", JSON.stringify(updatedCart));
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const handleLogin = () => {
+    sessionStorage.setItem("pendingCart", localStorage.getItem("cart"));
+    User.login();
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!user) {
+      handleLogin();
+      return;
+    }
+    
+    if (!selectedDistributor) {
+      alert("Por favor, selecione um distribuidor.");
+      return;
+    }
+    
+    if (!selectedAddress) {
+      alert("Por favor, selecione um endereço de entrega.");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const orderData = {
+        customer_email: user.email,
+        distributor_id: selectedDistributor.id,
+        items: cart.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        total_amount: subtotal + deliveryFee,
+        payment_method: paymentMethod,
+        delivery_address: selectedAddress,
+        notes: notes,
+        status: "pending",
+        estimated_delivery: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      };
+      
+      const order = await Order.create(orderData);
+      
+      localStorage.setItem("cart", "[]");
+      window.dispatchEvent(new Event("cartUpdated"));
+      
+      navigate(createPageUrl("OrderConfirmation") + "?id=" + order.id);
+    } catch (error) {
+      console.error("Error creating order:", error);
+      alert("Ocorreu um erro ao finalizar o pedido. Por favor, tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleProceedToCheckout = () => {
+    if (!user) {
+      handleLogin();
+      return;
+    }
+    
+    setActiveTab("checkout");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1E5631]" />
+      </div>
+    );
+  }
+
+  if (cart.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="text-center py-16">
+          <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#1E5631" className="w-10 h-10">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Seu carrinho está vazio</h2>
+          <p className="text-gray-600 mb-8">
+            Adicione algumas bebidas e petiscos para começar seu pedido.
+          </p>
+          <Button 
+            className="bg-[#1E5631] hover:bg-[#164023]"
+            onClick={() => navigate(createPageUrl("Home"))}
+          >
+            Voltar para a Loja
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Button 
+        variant="ghost" 
+        className="mb-6 text-gray-600" 
+        onClick={() => navigate(-1)}
+      >
+        <ArrowLeft className="w-4 h-4 mr-2" />
+        Voltar
+      </Button>
+      
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">Meu Carrinho</h1>
+      
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsTrigger value="cart">Carrinho</TabsTrigger>
+          <TabsTrigger value="checkout" disabled={cart.length === 0}>Pagamento</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="cart">
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-4">
+              {cart.map((item) => {
+                const product = products[item.product_id];
+                if (!product) return null;
+                
+                return (
+                  <Card key={item.product_id} className="overflow-hidden">
+                    <div className="flex items-center p-4">
+                      <div className="w-20 h-20 overflow-hidden rounded flex-shrink-0">
+                        <img
+                          src={product.image_url || "https://images.unsplash.com/photo-1613706429854-85e3690d00d9?q=80&w=500"}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      
+                      <div className="ml-4 flex-grow">
+                        <h3 className="font-medium">{product.name}</h3>
+                        <p className="text-sm text-gray-500">{product.size}</p>
+                        <p className="font-semibold">R$ {product.price.toFixed(2)}</p>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-8 text-center">{item.quantity}</span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-4 text-gray-400 hover:text-red-500"
+                        onClick={() => removeItem(item.product_id)}
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+            
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Resumo do Pedido</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span>R$ {subtotal.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Taxa de Entrega</span>
+                    <span>R$ {deliveryFee.toFixed(2)}</span>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex justify-between font-semibold text-lg">
+                    <span>Total</span>
+                    <span>R$ {(subtotal + deliveryFee).toFixed(2)}</span>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button 
+                    className="w-full bg-[#1E5631] hover:bg-[#164023]"
+                    onClick={handleProceedToCheckout}
+                  >
+                    Continuar para Pagamento
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="checkout">
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5" />
+                    Endereço de Entrega
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {user ? (
+                    <div className="space-y-4">
+                      {addresses.length > 0 ? (
+                        <div>
+                          <Select
+                            value={selectedAddress ? JSON.stringify(selectedAddress) : ""}
+                            onValueChange={(value) => setSelectedAddress(JSON.parse(value))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione um endereço" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {addresses.map((address, index) => (
+                                <SelectItem key={index} value={JSON.stringify(address)}>
+                                  {address.street}, {address.number} - {address.neighborhood}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          
+                          {selectedAddress && (
+                            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                              <p>
+                                {selectedAddress.street}, {selectedAddress.number}
+                                {selectedAddress.complement && ` - ${selectedAddress.complement}`}
+                              </p>
+                              <p>{selectedAddress.neighborhood}</p>
+                              <p>
+                                {selectedAddress.city} - {selectedAddress.state}, {selectedAddress.zip_code}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <p className="text-gray-500">Você ainda não tem endereços cadastrados.</p>
+                          <Button 
+                            variant="outline"
+                            onClick={() => navigate(createPageUrl("Profile"))}
+                          >
+                            Adicionar Endereço
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <p className="text-gray-600 mb-4">
+                        Faça login para continuar com seu pedido
+                      </p>
+                      <Button 
+                        className="bg-[#1E5631] hover:bg-[#164023]"
+                        onClick={handleLogin}
+                      >
+                        Entrar para Continuar
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Forma de Pagamento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
+                    <div className="flex items-center space-x-2 border rounded-lg p-4">
+                      <RadioGroupItem value="pix_online" id="pix_online" />
+                      <Label htmlFor="pix_online" className="flex items-center gap-3 cursor-pointer flex-grow">
+                        <div className="bg-[#1E5631]/10 w-10 h-10 rounded-full flex items-center justify-center">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6.1 8.65L8.65 6.1L17.9 15.35L15.35 17.9L6.1 8.65Z" fill="#1E5631"/>
+                            <path d="M8.65 17.9L6.1 15.35L15.35 6.1L17.9 8.65L8.65 17.9Z" fill="#1E5631"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-medium">PIX</p>
+                          <p className="text-sm text-gray-500">Pagamento instantâneo</p>
+                        </div>
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2 border rounded-lg p-4">
+                      <RadioGroupItem value="card_online" id="card_online" />
+                      <Label htmlFor="card_online" className="flex items-center gap-3 cursor-pointer flex-grow">
+                        <div className="bg-[#1E5631]/10 w-10 h-10 rounded-full flex items-center justify-center">
+                          <CreditCard className="w-5 h-5 text-[#1E5631]" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Cartão de Crédito</p>
+                          <p className="text-sm text-gray-500">Pagamento online</p>
+                        </div>
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2 border rounded-lg p-4">
+                      <RadioGroupItem value="cash_delivery" id="cash_delivery" />
+                      <Label htmlFor="cash_delivery" className="flex items-center gap-3 cursor-pointer flex-grow">
+                        <div className="bg-[#1E5631]/10 w-10 h-10 rounded-full flex items-center justify-center">
+                          <DollarSign className="w-5 h-5 text-[#1E5631]" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Dinheiro</p>
+                          <p className="text-sm text-gray-500">Pagamento na entrega</p>
+                        </div>
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2 border rounded-lg p-4">
+                      <RadioGroupItem value="card_delivery" id="card_delivery" />
+                      <Label htmlFor="card_delivery" className="flex items-center gap-3 cursor-pointer flex-grow">
+                        <div className="bg-[#1E5631]/10 w-10 h-10 rounded-full flex items-center justify-center">
+                          <Wallet className="w-5 h-5 text-[#1E5631]" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Cartão na Entrega</p>
+                          <p className="text-sm text-gray-500">Débito ou crédito</p>
+                        </div>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Observações</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    placeholder="Alguma observação para o pedido? (opcional)"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="resize-none"
+                    rows={3}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div>
+              <Card className="sticky top-24">
+                <CardHeader>
+                  <CardTitle>Resumo do Pedido</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    {cart.slice(0, 3).map((item) => (
+                      <div key={item.product_id} className="flex justify-between text-sm">
+                        <span>{item.quantity}x {item.product_name}</span>
+                        <span>R$ {(item.quantity * item.price).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    {cart.length > 3 && (
+                      <div className="text-sm text-gray-500">
+                        + {cart.length - 3} outros itens
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span>R$ {subtotal.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Taxa de Entrega</span>
+                    <span>R$ {deliveryFee.toFixed(2)}</span>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex justify-between font-semibold text-lg">
+                    <span>Total</span>
+                    <span>R$ {(subtotal + deliveryFee).toFixed(2)}</span>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex-col space-y-4">
+                  <Button 
+                    className="w-full bg-[#1E5631] hover:bg-[#164023]"
+                    onClick={handlePlaceOrder}
+                    disabled={isSubmitting || !user || !selectedAddress}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processando...
+                      </>
+                    ) : (
+                      'Finalizar Pedido'
+                    )}
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setActiveTab("cart")}
+                  >
+                    Voltar para o Carrinho
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
