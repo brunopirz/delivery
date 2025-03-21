@@ -1,0 +1,167 @@
+import React, { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MapPin, Loader2 } from "lucide-react";
+
+export default function LocationModal({ isOpen, onClose, onLocationSet, currentLocation }) {
+  const [zipCode, setZipCode] = useState(currentLocation?.zipCode || "");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [usingGeolocation, setUsingGeolocation] = useState(false);
+
+  const handleZipCodeChange = (e) => {
+    let value = e.target.value.replace(/\D/g, "");
+    if (value.length > 8) value = value.slice(0, 8);
+    
+    // Format as XXXXX-XXX
+    if (value.length > 5) {
+      value = value.slice(0, 5) + "-" + value.slice(5);
+    }
+    
+    setZipCode(value);
+    setError("");
+  };
+
+  const validateZipCode = () => {
+    const cleanZip = zipCode.replace(/\D/g, "");
+    if (cleanZip.length !== 8) {
+      setError("CEP inválido. Digite um CEP com 8 dígitos.");
+      return false;
+    }
+    return true;
+  };
+
+  const getLocationByZipCode = async () => {
+    if (!validateZipCode()) return;
+    
+    setIsLoading(true);
+    setError("");
+    
+    try {
+      // For the demo, we'll simulate a successful ZIP lookup
+      // In a real app, this would call a Brazilian ZIP API like ViaCEP
+      setTimeout(() => {
+        onLocationSet({
+          zipCode,
+          city: "São Paulo",
+          state: "SP",
+          neighborhood: "Vila Madalena",
+          hasDelivery: true
+        });
+        setIsLoading(false);
+      }, 1500);
+    } catch (error) {
+      setError("Não foi possível encontrar o endereço para este CEP.");
+      setIsLoading(false);
+    }
+  };
+
+  const getGeolocation = () => {
+    setUsingGeolocation(true);
+    setError("");
+    
+    if (!navigator.geolocation) {
+      setError("Geolocalização não é suportada pelo seu navegador.");
+      setUsingGeolocation(false);
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        // In a real app, we would use reverse geocoding to get the address from coordinates
+        // For this demo, we'll simulate it
+        setTimeout(() => {
+          onLocationSet({
+            zipCode: "05418-001",
+            city: "São Paulo",
+            state: "SP",
+            neighborhood: "Pinheiros",
+            hasDelivery: true,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          });
+          setUsingGeolocation(false);
+        }, 1500);
+      },
+      (error) => {
+        setError("Não foi possível obter sua localização: " + error.message);
+        setUsingGeolocation(false);
+      }
+    );
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Sua Localização</DialogTitle>
+          <DialogDescription>
+            Informe seu CEP para verificarmos a disponibilidade de entrega na sua região.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="zipcode">CEP</Label>
+            <Input
+              id="zipcode"
+              placeholder="00000-000"
+              value={zipCode}
+              onChange={handleZipCodeChange}
+              maxLength={9}
+            />
+            {error && <p className="text-sm text-red-500">{error}</p>}
+          </div>
+          
+          <div className="flex items-center">
+            <div className="flex-grow border-t border-gray-200"></div>
+            <span className="mx-4 text-gray-400 text-sm">ou</span>
+            <div className="flex-grow border-t border-gray-200"></div>
+          </div>
+          
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={getGeolocation}
+            disabled={usingGeolocation}
+          >
+            {usingGeolocation ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <MapPin className="mr-2 h-4 w-4" />
+            )}
+            Usar Minha Localização Atual
+          </Button>
+        </div>
+        
+        <DialogFooter>
+          <Button
+            type="submit"
+            onClick={getLocationByZipCode}
+            disabled={isLoading}
+            className="bg-[#1E5631] hover:bg-[#164023]"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verificando...
+              </>
+            ) : (
+              'Confirmar'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
