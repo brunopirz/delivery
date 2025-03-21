@@ -1,0 +1,72 @@
+import React from "react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ShoppingCart, Star } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+
+export default function ProductCard({ product, distributor }) {
+  const { toast } = useToast();
+
+  const addToCart = () => {
+    const cart = JSON.parse(localStorage.getItem("cart") || "[]");
+    const existingItem = cart.find(item => item.product_id === product.id);
+    
+    if (existingItem) {
+      existingItem.quantity += 1;
+    } else {
+      cart.push({
+        product_id: product.id,
+        product_name: product.name,
+        quantity: 1,
+        price: product.price,
+        distributor_id: product.distributor_id,
+        image_url: product.image_url
+      });
+    }
+    
+    localStorage.setItem("cart", JSON.stringify(cart));
+    window.dispatchEvent(new Event("cartUpdated"));
+    
+    toast({
+      title: "Adicionado ao carrinho",
+      description: `${product.name} foi adicionado ao seu carrinho`,
+    });
+  };
+
+  return (
+    <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 h-full flex flex-col group border-gray-200">
+      <div className="aspect-square relative overflow-hidden">
+        <img
+          src={product.image_url || "https://images.unsplash.com/photo-1613706429854-85e3690d00d9?q=80&w=500"}
+          alt={product.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        />
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent h-1/4 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      </div>
+      <CardContent className="p-4 flex-grow">
+        <h3 className="font-semibold text-lg mb-1 text-gray-800">{product.name}</h3>
+        <p className="text-sm text-gray-500 mb-2 line-clamp-2">{product.description}</p>
+        <div className="flex justify-between items-center">
+          <p className="font-bold text-lg text-[#1E5631]">R$ {product.price.toFixed(2)}</p>
+          {product.size && <span className="text-sm text-gray-400">{product.size}</span>}
+        </div>
+        {distributor && (
+          <div className="flex items-center gap-1 text-sm text-gray-600 mt-2">
+            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+            <span>{distributor.rating.toFixed(1)}</span>
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="p-4 pt-0">
+        <Button
+          onClick={addToCart}
+          className="w-full bg-[#1E5631] hover:bg-[#164023] transition-all duration-300 group-hover:shadow-md"
+        >
+          <ShoppingCart className="w-4 h-4 mr-2" />
+          Adicionar
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
