@@ -1,0 +1,21 @@
+import React from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+export default function CategoryFilter({ selectedCategory, onCategorySelect }) {
+  return (
+    <Select value={selectedCategory} onValueChange={onCategorySelect}>
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="Select category" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All Categories</SelectItem>
+        <SelectItem value="beer">Beers</SelectItem>
+        <SelectItem value="soda">Sodas</SelectItem>
+        <SelectItem value="juice">Juices</SelectItem>
+        <SelectItem value="ice">Ice</SelectItem>
+        <SelectItem value="snacks">Snacks</SelectItem>
+        <SelectItem value="chips">Chips</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
