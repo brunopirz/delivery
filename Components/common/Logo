@@ -1,0 +1,54 @@
+import React from "react";
+
+export default function Logo({ size = 40 }) {
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 100 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Circular background */}
+        <circle cx="50" cy="50" r="50" fill="#A4DE02" />
+        
+        {/* Beer mug icon */}
+        <path
+          d="M65 25H35C31.6863 25 29 27.6863 29 31V63C29 66.3137 31.6863 69 35 69H65C68.3137 69 71 66.3137 71 63V31C71 27.6863 68.3137 25 65 25Z"
+          fill="#1E5631"
+        />
+        <path
+          d="M65 25H35C31.6863 25 29 27.6863 29 31V39H71V31C71 27.6863 68.3137 25 65 25Z"
+          fill="white"
+          fillOpacity="0.3"
+        />
+        
+        {/* Handle */}
+        <path
+          d="M71 40V62C71 65.3137 73.6863 68 77 68C80.3137 68 83 65.3137 83 62V40C83 36.6863 80.3137 34 77 34C73.6863 34 71 36.6863 71 40Z"
+          fill="#1E5631"
+          stroke="white"
+          strokeWidth="2"
+        />
+        
+        {/* Speed line */}
+        <path
+          d="M20 45L29 45"
+          stroke="white"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <path
+          d="M15 55L29 55"
+          stroke="white"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
